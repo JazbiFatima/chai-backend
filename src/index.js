@@ -8,7 +8,22 @@ dotenv.config({
     path: './env' 
 }) 
 
-connectDB();
+connectDB()
+.then(() => {
+    app.on("error", (error) => {
+        console.error("ERROR: ", error);
+        throw error;
+    })
+    app.listen(process.env.PORT || 8000, () => {
+        console.log("Listening on port: " + process.env.PORT);
+    });
+}
+
+)
+.catch((error) =>  {
+    console.error("Connection ERROR: ", error);
+    process.exit(1);
+});
 
 
 /* import mongoose from "mongoose";
