@@ -265,6 +265,7 @@ const updateUserAvatar = assyncHandler( async (req, res) => {
         {
             new: true,  // returns information after update
         }).select("-password");
+        // todo: create function to delete old avatar in utility folder
     return res.status(200).json( new ApiResponse(200, user, "Avatar Updated Successfully") )
 
 })
@@ -291,6 +292,123 @@ const updateCoverImage = assyncHandler( async (req, res) => {
         }).select("-password");
     return res.status(200).json( new ApiResponse(200, user, "Cover Image Updated Successfully") )
 });
+
+const getUserChannelProfile = assyncHandler( async (req,res) => {
+    const {username} = req.params
+    if(!username?.trim()) {
+        throw new ApiError(404, "Username not found")
+    }
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase()
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "Subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "SubscribedTo"
+            }
+        },
+        {
+            $addFields: {
+                subscribersCount: {
+                    $size: "$Subscribers"
+                },
+                channelSubscribedToCount: {
+                    $size: "$SubscribedTo"
+                },
+                isSubscribed: {
+                    if: {$in: [req.user?._id, "$Subscribers.subscriber"]},
+                    then: true,
+                    else: false
+                }
+            }
+        },
+        {
+            $project: {
+                username: 1,
+                fullName: 1,
+                avatar: 1,
+                subscribersCount: 1,
+                channelSubscribedToCount: 1,
+                isSubscribed: 1,
+                coverImage: 1,
+                email: 1
+            }
+        }
+    ]);
+
+    if(!channel?.length) {
+        throw new ApiError(404, "Channel doesn't exists");
+    }
+
+    console.log(channel);
+
+    return res.status(200).json( new ApiResponse(200, channel[0], "User channel fetched successfully") )
+});
+
+const getWatchHistory = assyncHandler( async(req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user?._id)
+            }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        username: 1,
+                                        fullName: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields: {
+                            owner: {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            $project: {
+                videos: 1
+            }
+        }
+    ])
+
+    return res.status(200).json( new ApiResponse(200, user[0].watchHistory, "User watch history fetched successfully") )
+});
+
 export {
     registerUser, 
     loginUser, 
@@ -300,5 +418,7 @@ export {
     getCurrentUser, 
     UpdateAccountDetails,
     updateUserAvatar,
-    updateCoverImage
+    updateCoverImage,
+    getUserChannelProfile,
+    getWatchHistory
 }
